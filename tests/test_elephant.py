@@ -381,7 +381,7 @@ class ElephantTests(unittest.TestCase):
         self.assertEqual(self.events, [])
 
     def test_short_plan_gate_and_minimum_bounded_steps(self):
-        self.config["text_config"].update(num_hidden_layers=32, layer_types=["linear_attention"] * 31 + ["full_attention"])
+        self.config["text_config"].update(num_hidden_layers=32, layer_types=(["linear_attention"] * 3 + ["full_attention"]) * 8)
         self.write_contract()
         self.backbone._text_model.layers *= 8
         self.model.load()

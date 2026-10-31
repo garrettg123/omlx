@@ -252,6 +252,9 @@ class ElephantModel:
             overrides = dict(config["modeling_overrides"])
             attention = overrides.pop("attention")
             text = config["text_config"]
+            depth = text["num_hidden_layers"]
+            # mlx-lm ignores layer_types and constructs this periodic schedule.
+            interval = text.get("full_attention_interval", 4)
             valid = (
                 config["model_type"] == "qwen3_5"
                 and text["model_type"] == "qwen3_5_text"
@@ -266,9 +269,16 @@ class ElephantModel:
                 and config.get("architectures") == ["Qwen3_5ForConditionalGeneration"]
                 and config.get("vision_config") is None
                 and config.get("audio_config") is None
+                and type(depth) is int and depth >= 2
+                and type(interval) is int and 2 <= interval <= depth
                 and isinstance(text.get("layer_types"), list)
                 and set(text["layer_types"]) == {"linear_attention", "full_attention"}
-                and len(text["layer_types"]) == text.get("num_hidden_layers")
+                and len(text["layer_types"]) == depth
+                and all(
+                    kind == ("full_attention" if (i + 1) % interval == 0
+                             else "linear_attention")
+                    for i, kind in enumerate(text["layer_types"])
+                )
                 and type(text["vocab_size"]) is int and text["vocab_size"] >= 256
                 and type(text["hidden_size"]) is int and text["hidden_size"] > 0
             )
