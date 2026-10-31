@@ -178,18 +178,18 @@ class DecisionDiscoveryTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertEqual(self.discovery._decode_hf_cache_model_id(Path(name)), expected)
 
-    def test_plain_qwen_and_unrelated_semantic_fields_do_not_add_families(self):
-        for config in (
-            {"model_type": "qwen3_5"},
-            {"model_type": "qwen3_5", "modeling_overrides": {"readout": "slot_lm"}},
-            {"model_type": "qwen3_5", "modeling_overrides": {"attention": {
+    def test_plain_qwen_and_partial_elephant_markers(self):
+        for config, expected in (
+            ({"model_type": "qwen3_5"}, None),
+            ({"model_type": "qwen3_5", "modeling_overrides": {"readout": "slot_lm"}}, "elephant"),
+            ({"model_type": "qwen3_5", "modeling_overrides": {"attention": {
                 "full_attention": "block_bidirectional"
-            }}},
-            {"model_type": "llama"},
-            {},
+            }}}, "elephant"),
+            ({"model_type": "llama"}, None),
+            ({}, None),
         ):
             with self.subTest(config=config):
-                self.assertIsNone(self.discovery.decision_kind(self.path, config))
+                self.assertEqual(self.discovery.decision_kind(self.path, config), expected)
 
     def test_passed_config_overrides_disk_without_reading_it(self):
         self.touch("helper/shim.py")
@@ -216,16 +216,14 @@ class DecisionDiscoveryTests(unittest.TestCase):
             path, {"model_type": "qwen3_5"}
         ), "openjev")
 
-    def test_nondict_configs_preserve_head_attribute_errors(self):
+    def test_nondict_configs_without_elephant_readout_return_none(self):
         for config in ([], "text", 1, False):
             with self.subTest(config=config):
-                with self.assertRaises(AttributeError):
-                    self.discovery.decision_kind(self.path, config)
+                self.assertIsNone(self.discovery.decision_kind(self.path, config))
         for config in ([], "text", 1, False, None):
             with self.subTest(disk_config=config):
                 self.write_json("config.json", config)
-                with self.assertRaises(AttributeError):
-                    self.discovery.decision_kind(self.path)
+                self.assertIsNone(self.discovery.decision_kind(self.path))
 
     def test_malformed_d1_fields_preserve_head_errors_and_short_circuit(self):
         for auto_map in (["D1Model"], "D1Model", 1):
@@ -268,7 +266,7 @@ class DecisionDiscoveryTests(unittest.TestCase):
         imports |= {alias.name for node in ast.walk(tree) if isinstance(node, ast.Import)
                     for alias in node.names}
         self.assertEqual(imports, {"json", "pathlib", "typing"})
-        self.assertEqual(self.discovery.DecisionKind.__args__, ("clef", "openjev", "d3", "d1"))
+        self.assertEqual(self.discovery.DecisionKind.__args__, ("clef", "openjev", "d3", "d1", "elephant"))
         constants = {
             "CLEF_HEAD_WEIGHTS": "joint_head.safetensors",
             "CLEF_HEAD_CONFIG": "joint_head_config.json",

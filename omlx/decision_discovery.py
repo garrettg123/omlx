@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Literal
 
-DecisionKind = Literal["clef", "openjev", "d3", "d1"]
+DecisionKind = Literal["clef", "openjev", "d3", "d1", "elephant"]
 
 # Clef ships its decision head next to the backbone shards. It is not part of
 # the backbone index, so backbone loaders and quantizers must skip it.
@@ -64,7 +64,32 @@ def decision_kind(model_path: Path, config: dict | None = None) -> DecisionKind 
             with open(model_path / "config.json") as f:
                 config = json.load(f)
         except (OSError, ValueError):
-            return None
+            config = {}
+    # Semantic markers, not a Qwen/name guess. Inconsistent Elephant-like
+    # declarations deliberately reach Elephant's rejecting load guards rather
+    # than the generic chat or OpenJev fallback, including renamed checkpoints.
+    if not isinstance(config, dict):
+        config = {}
+    overrides = config.get("modeling_overrides")
+    overrides = overrides if isinstance(overrides, dict) else {}
+    attention = overrides.get("attention")
+    attention = attention if isinstance(attention, dict) else {}
+    try:
+        readout = json.loads((model_path / "readout.json").read_text())
+    except (OSError, ValueError):
+        readout = {}
+    if not isinstance(readout, dict):
+        readout = {}
+    if (
+        attention.get("full_attention") == "block_bidirectional"
+        or overrides.get("readout") == "slot_lm"
+        or readout.get("readout") == "slot_lm"
+        or any(
+            meta.get("head_dim") == 256 and meta.get("n_slots") == 256
+            for meta in (overrides, readout)
+        )
+    ):
+        return "elephant"
     model_type = config.get("model_type")
     if model_type in {"lfm3_vl", "lfm3_omni"} and (
         "D1Model" in (config.get("architectures") or ())
