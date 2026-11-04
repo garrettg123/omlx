@@ -187,6 +187,7 @@ from .api.decisions import (
 )
 from .api.decisions_models import DecisionRequest
 from .api.systemone_models import SystemOneRequest
+from .api.systemone_strict import SystemOneStrictError, parse_strict_systemone_body
 from .api.thinking import (
     ThinkingParser,
     extract_thinking,
@@ -4354,6 +4355,12 @@ async def create_systemone(
     try:
         if _is_decision_model(request.model):
             engine = await get_decision_engine(request.model, lease)
+            if engine.kind == "elephant":
+                # Pydantic drops duplicate and unknown keys; Elephant must see them.
+                try:
+                    parse_strict_systemone_body(await http_request.body())
+                except SystemOneStrictError as e:
+                    raise HTTPException(status_code=400, detail=str(e)) from e
             try:
                 plan = await engine.encode(
                     request.model_dump(), truncate=request.truncate
