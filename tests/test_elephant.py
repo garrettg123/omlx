@@ -108,6 +108,7 @@ class Tokenizer:
 class FakeBackbone:
     def __init__(self, labels, events):
         self.tokenizer = Tokenizer(labels)
+        self.max_position_embeddings = 262144  # elephant-1-9B text_config
         self.events = events
         self.has_vision = False
         self.closed = False

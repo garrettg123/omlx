@@ -360,10 +360,20 @@ class ElephantModel:
         if full.count(_BOUNDARY) or boundary.count(_BOUNDARY) != 1:
             raise DecisionRequestError("Ambiguous state boundary sentinel")
         ids = tokenizer.encode(full, add_special_tokens=False)
-        limit = min(512, getattr(self.backbone, "max_position_embeddings", None) or 512)
-        if not ids or len(ids) > limit:
+        # The model's own configured context length (text_config
+        # max_position_embeddings, 262,144 for elephant-1-9B); no lower cap.
+        # Fail closed when the limit is unknown rather than run unbounded.
+        limit = getattr(self.backbone, "max_position_embeddings", None)
+        if not ids:
+            raise DecisionContextLengthError("Elephant prompt is empty")
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
             raise DecisionContextLengthError(
-                f"Elephant exceeds {limit} chat-template tokens; no truncation"
+                "Elephant model context length is unknown; no truncation"
+            )
+        if len(ids) > limit:
+            raise DecisionContextLengthError(
+                f"Elephant prompt needs {len(ids)} chat-template tokens; the "
+                f"model limit is {limit}; no truncation"
             )
         prefix = tokenizer.encode(
             boundary[:boundary.index(_BOUNDARY)], add_special_tokens=False
