@@ -35,6 +35,8 @@ SLOT_LABELS = tuple(LETTERS) + tuple(
 )[:230]
 _BOUNDARY = "QEV_PREFIX_MARK"
 _MAX_LAYER_STEP = 4
+# Choice options / score levels per question (slot labels A..H).
+_MAX_OPTIONS = 8
 _MARKERS = (
     "<|vision", "<|image", "<|video", "<image>", "<video>", "<|audio", "<audio>",
     "data:image", "data:video", "data:audio",
@@ -112,13 +114,13 @@ def render_question(qid, question):
     if instructions is not None and not isinstance(instructions, (str, dict, list)):
         raise DecisionRequestError("Instructions must be a string, object, array or null")
     if kind == "choice":
-        if not isinstance(criteria, dict) or not 2 <= len(criteria) <= 3:
-            raise DecisionRequestError("Choice requires 2–3 options")
+        if not isinstance(criteria, dict) or not 2 <= len(criteria) <= _MAX_OPTIONS:
+            raise DecisionRequestError("Choice requires 2–8 options")
         labels, names, desc = list(criteria), list(criteria), list(criteria.values())
         default = "Which option applies to the state?"
     elif kind == "score":
-        if not isinstance(criteria, list) or not 2 <= len(criteria) <= 3:
-            raise DecisionRequestError("Score requires 2–3 levels")
+        if not isinstance(criteria, list) or not 2 <= len(criteria) <= _MAX_OPTIONS:
+            raise DecisionRequestError("Score requires 2–8 levels")
         labels = [str(i) for i in range(len(criteria))]
         names, desc = [f"level {i}" for i in labels], criteria
         default = "Which level describes the state?"
@@ -175,7 +177,7 @@ def assemble(question, probabilities):
     labels = question.labels
     if (
         question.kind not in {"choice", "score", "noul"}
-        or not 2 <= len(labels) <= 3
+        or not 2 <= len(labels) <= _MAX_OPTIONS
         or len(question.descriptions) != len(labels)
         or any(not isinstance(k, str) or not k.strip() for k in labels)
         or len(set(labels)) != len(labels)
@@ -222,7 +224,7 @@ def assemble(question, probabilities):
 
 def softmax(logits, size):
     if (
-        not isinstance(logits, (list, tuple)) or size not in (2, 3)
+        not isinstance(logits, (list, tuple)) or not 2 <= size <= _MAX_OPTIONS
         or len(logits) != size
         or any(type(v) not in (int, float) or not math.isfinite(v) for v in logits)
     ):

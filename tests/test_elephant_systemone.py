@@ -141,8 +141,8 @@ class ElephantSystemOneContractTests(unittest.TestCase):
     def setUp(self):
         harness.ElephantTests.setUp(self)
         # Distinct slot logits: hidden[0, -1] is [1.0, id], so logit i == rows[i][0].
-        self.logits = [1.0, 0.25, -0.5]
-        self.backbone.rows = harness.Array([[x, 0.0] for x in self.logits] + [[0.0, 0.0]] * 253)
+        self.logits = [1.0, 0.25, -0.5, -0.75, -1.0, -1.25, -1.5, -1.75, -2.0]
+        self.backbone.rows = harness.Array([[x, 0.0] for x in self.logits] + [[0.0, 0.0]] * (256 - len(self.logits)))
         self.model.load()
 
     def answer(self, question, state="synthetic"):
@@ -167,8 +167,9 @@ class ElephantSystemOneContractTests(unittest.TestCase):
         self.assertTrue(all(0 < v < 1 for v in got), "one-hot vector")
         self.assertGreater(max(got) - min(got), 0.1, "uniform vector")
 
-    def test_choice_two_and_three_options_keep_order_and_full_vector(self):
-        for criteria in ({"z": None, "a": None}, {"z": None, "a": "first letter", "m": None}):
+    def test_choice_two_to_eight_options_keep_order_and_full_vector(self):
+        for criteria in ({"z": None, "a": None}, {"z": None, "a": "first letter", "m": None},
+                         dict.fromkeys("zyxw"), dict.fromkeys("zmabq"), dict.fromkeys("zabcdefg")):
             with self.subTest(n=len(criteria)):
                 _, result = self.answer({"type": "choice", "criteria": criteria})
                 answer = result["answers"]["q"]
@@ -193,9 +194,16 @@ class ElephantSystemOneContractTests(unittest.TestCase):
         self.assertAlmostEqual(answer["noul"], self.expected(2)[0], places=6)
         self.assertNotIn(answer["noul"], (0, 0.5, 1))
 
-    def test_one_and_four_options_are_rejected_without_padding(self):
-        for kind, criteria in (("choice", {"a": None}), ("choice", dict.fromkeys("abcd")),
-                               ("score", ["only"]), ("score", [1, 2, 3, 4])):
+    def test_five_level_score_vector(self):
+        _, result = self.answer({"type": "score", "criteria": ["l0", None, "l2", None, "l4"]})
+        answer = result["answers"]["q"]
+        self.assertEqual(list(answer["probabilities"]), ["0", "1", "2", "3", "4"])
+        self.assertVector(list(answer["probabilities"].values()), 5)
+        self.assertAlmostEqual(answer["score"], sum(i * v for i, v in enumerate(self.expected(5))), places=6)
+
+    def test_one_and_nine_options_are_rejected_without_padding(self):
+        for kind, criteria in (("choice", {"a": None}), ("choice", dict.fromkeys("abcdefghi")),
+                               ("score", ["only"]), ("score", list(range(9)))):
             with self.subTest(kind=kind, n=len(criteria)), self.assertRaises(self.runtime.DecisionRequestError):
                 self.answer({"type": kind, "criteria": criteria})
 

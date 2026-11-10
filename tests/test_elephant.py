@@ -264,6 +264,38 @@ class ElephantTests(unittest.TestCase):
         rounded = self.runtime.assemble(self.question(), [1/3]*3)["probabilities"]
         self.assertLessEqual(abs(sum(rounded.values()) - 1), 1.000001e-6)
 
+    def test_two_to_eight_options_and_levels_accepted_in_label_order(self):
+        letters = "ABCDEFGH"
+        for n in range(2, 9):
+            names = [f"opt{i}" for i in range(n)]
+            for kind, criteria, labels in (("choice", dict.fromkeys(names), names), ("score", [f"lvl{i}" for i in range(n)], [str(i) for i in range(n)])):
+                with self.subTest(kind=kind, n=n):
+                    q = self.runtime.render_question("q", {"type": kind, "criteria": criteria})
+                    self.assertEqual(q.labels, tuple(labels))
+                    opts = [line for line in q.suffix.splitlines() if line[:2] in {f"{c}." for c in letters}]
+                    self.assertEqual([line[0] for line in opts], list(letters[:n]))
+                    self.assertTrue(q.suffix.endswith("Answer with one letter: " + ", ".join(letters[:n]) + "."))
+                    self.assertNotIn(f"{'ABCDEFGHI'[n]}.", [line[:2] for line in q.suffix.splitlines()])
+                    logits = [float(-i) for i in range(n)]
+                    answer = self.runtime.assemble(q, self.runtime.softmax(logits, n))
+                    self.assertEqual(list(answer["probabilities"]), labels)
+                    if kind == "choice":
+                        self.assertEqual(answer["choice"], "opt0")
+                    else:
+                        self.assertEqual(list(answer["legend"]), labels)
+
+    def test_one_and_nine_options_or_levels_rejected(self):
+        for kind, criteria in (("choice", {"a": None}), ("choice", dict.fromkeys("abcdefghi")), ("score", ["only"]), ("score", [None] * 9)):
+            with self.subTest(kind=kind, n=len(criteria)), self.assertRaises(self.runtime.DecisionRequestError) as caught:
+                self.runtime.render_question("q", {"type": kind, "criteria": criteria})
+            self.assertIn("2\u20138", str(caught.exception))
+        for n in (1, 9):
+            with self.subTest(softmax=n), self.assertRaises(self.runtime.DecisionRequestError):
+                self.runtime.softmax([0.0] * n, n)
+        nine = self.runtime.Question("q", "choice", tuple("abcdefghi"), (None,) * 9, "")
+        with self.assertRaises(self.runtime.DecisionRequestError):
+            self.runtime.assemble(nine, [1 / 9] * 9)
+
     def test_load_slots_fp32_and_cleanup(self):
         self.model.load()
         self.assertEqual(self.model.slot_ids, tuple(range(256)))
@@ -367,7 +399,7 @@ class ElephantTests(unittest.TestCase):
             request = self.request() | change
             with self.subTest(change=change), self.assertRaises(self.runtime.DecisionRequestError):
                 self.model.encode(request)
-        for question in ({"type": "unknown"}, {"type": "choice", "criteria": {1: None, "1": None}}, {"type": "choice", "criteria": {"": None, "a": None}}, {"type": "choice", "criteria": {"a": None}}, {"type": "score", "criteria": [None]*4}, {"type": "noul", "criteria": {"yes": None}}, {"type": "noul", "debias": 2}, {"type": "noul", "instructions": float("nan")}):
+        for question in ({"type": "unknown"}, {"type": "choice", "criteria": {1: None, "1": None}}, {"type": "choice", "criteria": {"": None, "a": None}}, {"type": "choice", "criteria": {"a": None}}, {"type": "score", "criteria": [None]*9}, {"type": "noul", "criteria": {"yes": None}}, {"type": "noul", "debias": 2}, {"type": "noul", "instructions": float("nan")}):
             with self.assertRaises(self.runtime.DecisionRequestError):
                 self.runtime.render_question("q", question)
         self.model.encode(self.request() | {"images": [], "videos": None})
